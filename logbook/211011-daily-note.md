@@ -38,4 +38,4 @@ _Met Rich at 10.00 to 11.00 on Monday 11 October 2021 to review fundemental theo
 - [ ] Use different but related underlying functions to generate the different outputs and see if the multi-ouput ConvCNP captures the correlation.
 - [ ] Increase the number of outputs beyond two and try different permutations of regression and classification datasets.
 - [ ] Consider different possible architectures for handling the representation of the multi-output data.
-- [ ] Test the performance on real datasets.
+- [ ] Test the performance on real datasets, including possibly some from climate science and health.
