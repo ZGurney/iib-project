@@ -4,7 +4,7 @@
 
 ## Meeting with Rich
 
-_Met Rich at 10.00 to 11.00 on Monday 11 October 2021 to review fundemental theory underpinning project, including:_
+_Met Rich at 10.00 to 11.00 on Monday 11 October 2021 to review fundamental theory underpinning project, including:_
 
 ### 1. What kind of neural process will we be using in this project?
 
@@ -22,7 +22,7 @@ _Met Rich at 10.00 to 11.00 on Monday 11 October 2021 to review fundemental theo
 ### 3. What kind of encoder-decoder architecture will we use to handle the multi-output data?
 
   - Deep sets result requires representation of the context set to take a certain form to ensure the encoder is invariant under permutations of the context set.
-- Thus, we have multiple possible architectures for combining the different ouputs. For now, we will start with the architecture that computes representation vectors for each output, then stacks them into an overall vector and perform the decoding step as usual.
+- Thus, we have multiple possible architectures for combining the different outputs. For now, we will start with the architecture that computes representation vectors for each output, then stacks them into an overall vector and perform the decoding step as usual.
 
 ### Next steps
 
