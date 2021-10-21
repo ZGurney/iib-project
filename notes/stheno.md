@@ -1,6 +1,6 @@
 # Stheno
 
-Stheno is a Python package for using Gaussian processes in modelling.
+Stheno is a Python package for using Gaussian processes for modelling data.
 
 ## Some basic documentation
 

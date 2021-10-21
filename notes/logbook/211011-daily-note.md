@@ -8,10 +8,10 @@ _Met Rich at 10.00 to 11.00 on Monday 11 October 2021 to review fundamental theo
 
 ### 1. What kind of neural process will we be using in this project?
 
-  - Conditional neural processes (CNP) are easy to work with out-of-the-box, however, due to their factorisation assumption, they cannot generate consistent samples from the predictive distribution -- a problem in many datasets where nearby data points are correlated, for example, temperature over a certain spatial region.
+  - [[cnp-family|Conditional neural processes]] (CNP) are easy to work with out-of-the-box, however, due to their factorisation assumption, they cannot generate consistent samples from the predictive distribution -- a problem in many datasets where nearby data points are correlated, for example, temperature over a certain spatial region.
   - Latent neural processes, sometimes referred to in literature simply as neural processes, solve the problem of incoherent samples by treating the representation as a latent variable. However, these can be computationally demanding to evaluate and do not scale well.
-  - Therefore, one mid-way solution is to define the predictive distribution as a multivariate Gaussian, parameterising the mean vector and the covariance matrix whose off-diagonal terms allow correlation between data points to be captured.
-  - In addition, we will be using a convolutional conditional neural process (ConvCNP) as experience has shown that, although more complex in structure, tend to be easier to train.
+  - Therefore, one mid-way solution is to use [[gaussian-np|Gaussian neural processes]]  which define the predictive distribution as a multivariate Gaussian, parameterising the mean vector and the covariance matrix whose off-diagonal terms allow correlation between data points to be captured.
+  - In addition, we will be using a [[convcnp|convolutional conditional neural process]] (ConvCNP) as experience has shown that, although more complex in structure, tend to be easier to train.
 
 ### 2. How do we generate the synthetic data to benchmark the handling of multi-output data?
 

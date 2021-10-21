@@ -26,7 +26,7 @@
 	- work with real data: speak with Ana and Mark mid-term (W4) who work on climate prediction on structure of datasets and missing points
 
 - ConvCNP vs GNP
-	- Gaussian Neural Process being introduced in [pre-publication paper](https://openreview.net/forum?id=3pugbNqOh5m)
+	- [[gaussian-np|Gaussian neural processes]] being introduced in [pre-publication paper](https://openreview.net/forum?id=3pugbNqOh5m)
 	- uses same ConvDeepSet structure but now parameterises the covariance function which can capture correlations across input space
 	- **Key point**
 		- Currently working with independent noise models across outputs, i.e. the noise associated with one output prediction is independent of another output prediction
