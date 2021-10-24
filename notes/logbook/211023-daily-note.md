@@ -1,0 +1,20 @@
+# Daily Note
+
+23 October 2021
+
+To-Do
+- [x] Learn how to save models to produce plots later
+- [ ] Clamp regression standard deviation to prevent numerical issue
+- [ ] Change dual ConvCNP code to train on single datasets
+- [ ] Train three models and produce plots and performance metrics
+
+Notes
+- Saving models at each epoch to a folder `_experiments/experiment/saved_models/model1.tar` including epoch, loss as a tuple with value and error, model, optimiser parameters
+- MLflow
+	- Tracking: logging parameters, metrics and artifacts
+	- Found it too challenging to integrate with Azure workflow, so just used Azure logging
+- Saving model
+	- 1. Native PyTorch save -> didn't work
+	- 2. [Some directory manipulation](https://docs.microsoft.com/en-gb/azure/machine-learning/how-to-log-view-metrics) -> worked!
+- How to load model on CPU?
+	- `checkpoint = torch.load('models/model-1/model1.tar', map_location=torch.device('cpu'))` doesn't work

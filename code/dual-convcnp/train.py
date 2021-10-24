@@ -1,4 +1,6 @@
 import argparse
+import os
+import joblib
 
 import lab.torch as B
 import matplotlib.pyplot as plt
@@ -8,6 +10,10 @@ from wbml.experiment import WorkingDirectory
 from wbml.plot import tweak
 
 from convcnp import DualConvCNP, GPGenerator
+
+from azureml.core import Run # Import library for logging in Azure
+
+run = Run.get_context() # Access run object for logging
 
 # Enable GPU if it is available.
 if torch.cuda.is_available():
@@ -134,6 +140,8 @@ for epoch in range(args.epochs):
         losses = B.to_numpy(losses)
         error = 1.96 * np.std(losses) / np.sqrt(len(losses))
         print(f"Loss: {np.mean(losses):6.2f} +- {error:6.2f}")
+        run.log(name="loss", value=np.mean(losses))
+        run.log(name="error", value=error)
 
         # Produce some plots.
         print("Plotting...")
@@ -170,7 +178,8 @@ for epoch in range(args.epochs):
             label="Prediction",
         )
         tweak(legend_loc="best")
-        plt.savefig(wd.file(f"epoch{epoch + 1}_classification.pdf"))
+        #plt.savefig(wd.file(f"epoch{epoch + 1}_classification.pdf"))
+        run.log_image(name=f"epoch{epoch + 1}_classification", plot=plt)
         plt.close()
 
         # Plot for regression:
@@ -201,5 +210,27 @@ for epoch in range(args.epochs):
             style="pred",
         )
         tweak(legend_loc="best")
-        plt.savefig(wd.file(f"epoch{epoch + 1}_regression.pdf"))
+        #plt.savefig(wd.file(f"epoch{epoch + 1}_regression.pdf"))
+        run.log_image(name=f"epoch{epoch + 1}_regression", plot=plt)
         plt.close()
+
+        # Save checkpoint
+        checkpoint = {
+            "epoch": epoch + 1,
+            "loss": (np.mean(losses), error),
+            "state_dict": model.state_dict(),
+            "optimiser": opt.state_dict(),
+        }
+
+        # !!!Check if unecessary!!!
+        # Check if output folder already made
+        if not os.path.isdir("./outputs"):
+            print("Output folder not yet made, initialise folder")
+            os.makedirs('./outputs', exist_ok=True)
+
+        # Save the trained model in the outputs folder
+        model_file_name = f"model{epoch + 1}.tar"
+        with open(model_file_name, "wb") as file:
+            joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
+
+run.complete()
