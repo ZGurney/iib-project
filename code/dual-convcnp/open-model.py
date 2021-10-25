@@ -10,7 +10,7 @@ import torch
 from wbml.experiment import WorkingDirectory
 from wbml.plot import tweak
 
-from convcnp import DualConvCNP, GPGenerator
+from convcnp import DualConvCNP, ClassConvCNP, RegConvCNP, GPGenerator
 
 # Enable GPU if it is available.
 if torch.cuda.is_available():
@@ -35,23 +35,48 @@ def split_off_classification(batch):
     }
 
 
-def compute_loss(model, batch):
+def compute_loss(model, batch, mode):
     """Compute the sum of the classification and regression loss functions."""
-    class_prob, (reg_mean, reg_std) = model(batch)
+    if mode == "dual":
+        class_prob, (reg_mean, reg_std) = model(batch)
 
-    # Clamp the classification probabilities to prevent the loss for NaNing out.
-    class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
+        # Clamp the classification probabilities to prevent the loss for NaNing out.
+        class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
 
-    class_loss = -B.sum(
-        batch["y_target_class"] * B.log(class_prob)
-        + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
-    )
-    reg_loss = 0.5 * B.sum(
-        B.log_2_pi
-        + B.log(reg_std)
-        + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
-    )
-    return args.alpha * class_loss + (1 - args.alpha) * reg_loss
+        class_loss = -B.sum(
+            batch["y_target_class"] * B.log(class_prob)
+            + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
+        )
+
+        reg_loss = 0.5 * B.sum(
+            B.log_2_pi
+            + B.log(reg_std)
+            + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
+        )
+
+        overall_loss = args.alpha * class_loss + (1 - args.alpha) * reg_loss
+
+    if mode == "classification":
+        class_prob = model(batch)
+
+        # Clamp the classification probabilities to prevent the loss for NaNing out.
+        class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
+
+        overall_loss = -B.sum(
+            batch["y_target_class"] * B.log(class_prob)
+            + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
+        )
+
+    if mode == "regression":
+        (reg_mean, reg_std) = model(batch)
+
+        overall_loss = 0.5 * B.sum(
+            B.log_2_pi
+            + B.log(reg_std)
+            + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
+        )
+
+    return overall_loss
 
 
 def take_first(x):

@@ -65,23 +65,19 @@ def compute_loss(model, batch, mode):
         # Clamp the classification probabilities to prevent the loss for NaNing out.
         class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
 
-        class_loss = -B.sum(
+        overall_loss = -B.sum(
             batch["y_target_class"] * B.log(class_prob)
             + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
         )
 
-        overall_loss = args.alpha * class_loss
-
     if mode == "regression":
         (reg_mean, reg_std) = model(batch)
 
-        reg_loss = 0.5 * B.sum(
+        overall_loss = 0.5 * B.sum(
             B.log_2_pi
             + B.log(reg_std)
             + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
         )
-
-        overall_loss = (1 - args.alpha) * reg_loss
 
     return overall_loss
 
