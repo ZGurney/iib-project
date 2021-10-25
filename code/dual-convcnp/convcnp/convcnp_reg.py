@@ -8,23 +8,23 @@ from .encoder import SetConv1dEncoder
 from .unet import UNet
 from .util import convert_batched_data
 
-__all__ = ["DualConvCNP"]
+__all__ = ["RegConvCNP"]
 
 
-class DualConvCNP(nn.Module):
+class RegConvCNP(nn.Module):
     def __init__(
         self,
         sigma: float = 0.1,
         points_per_unit: float = 32,
         small: bool = False,
     ):
-        super(DualConvCNP, self).__init__()
+        super(RegConvCNP, self).__init__()
 
         # Construct CNN:
         self.conv = UNet(
             dimensionality=1,
-            in_channels=4,  # Two for regression and two for classification
-            out_channels=3,  # Two for mean and variance and one for class. prob.
+            in_channels=2,  # Two channels for regression
+            out_channels=2,  # Mean and variance for regression
             channels=(8, 16, 16, 32) if small else (8, 16, 16, 32, 32, 64),
         )
 
@@ -58,27 +58,18 @@ class DualConvCNP(nn.Module):
                 batch["x_target_reg"],
             )[None, :, None]
 
-        # Run encoders.
-        z_class = self.encoder(
-            batch["x_context_class"],
-            batch["y_context_class"],
-            x_grid,
-        )
-        z_reg = self.encoder(
+        # Run single encoder.
+        z = self.encoder(
             batch["x_context_reg"],
             batch["y_context_reg"],
             x_grid,
         )
 
         # Run CNN.
-        z = B.concat(z_class, z_reg, axis=1)
         z = self.conv(z)
-        z_class = z[:, :1, :]
-        z_reg = z[:, 1:, :]
 
-        # Run decoders.
-        z_class = self.decoder(x_grid, z_class, batch["x_target_class"])
-        z_reg = self.decoder(x_grid, z_reg, batch["x_target_reg"])
+        # Run single decoder.
+        z = self.decoder(x_grid, z, batch["x_target_reg"])
 
-        # Return parameters for classification and regression.
-        return B.sigmoid(z_class), (z_reg[:, :, :1], B.exp(z_reg[:, :, 1:]))
+        # Return single parameter for classification
+        return (z[:, :, :1], B.exp(z[:, :, 1:]))

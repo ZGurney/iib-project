@@ -9,7 +9,7 @@ import torch
 from wbml.experiment import WorkingDirectory
 from wbml.plot import tweak
 
-from convcnp import DualConvCNP, GPGenerator
+from convcnp import DualConvCNP, ClassConvCNP, RegConvCNP, GPGenerator
 
 from azureml.core import Run # Import library for logging in Azure
 
@@ -38,23 +38,52 @@ def split_off_classification(batch):
     }
 
 
-def compute_loss(model, batch):
+def compute_loss(model, batch, mode):
     """Compute the sum of the classification and regression loss functions."""
-    class_prob, (reg_mean, reg_std) = model(batch)
+    if mode == "dual":
+        class_prob, (reg_mean, reg_std) = model(batch)
 
-    # Clamp the classification probabilities to prevent the loss for NaNing out.
-    class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
+        # Clamp the classification probabilities to prevent the loss for NaNing out.
+        class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
 
-    class_loss = -B.sum(
-        batch["y_target_class"] * B.log(class_prob)
-        + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
-    )
-    reg_loss = 0.5 * B.sum(
-        B.log_2_pi
-        + B.log(reg_std)
-        + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
-    )
-    return args.alpha * class_loss + (1 - args.alpha) * reg_loss
+        class_loss = -B.sum(
+            batch["y_target_class"] * B.log(class_prob)
+            + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
+        )
+
+        reg_loss = 0.5 * B.sum(
+            B.log_2_pi
+            + B.log(reg_std)
+            + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
+        )
+
+        overall_loss = args.alpha * class_loss + (1 - args.alpha) * reg_loss
+
+    if mode == "classification":
+        class_prob = model(batch)
+
+        # Clamp the classification probabilities to prevent the loss for NaNing out.
+        class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
+
+        class_loss = -B.sum(
+            batch["y_target_class"] * B.log(class_prob)
+            + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
+        )
+
+        overall_loss = args.alpha * class_loss
+
+    if mode == "regression":
+        (reg_mean, reg_std) = model(batch)
+
+        reg_loss = 0.5 * B.sum(
+            B.log_2_pi
+            + B.log(reg_std)
+            + ((reg_mean - batch["y_target_reg"]) / reg_std) ** 2
+        )
+
+        overall_loss = (1 - args.alpha) * reg_loss
+
+    return overall_loss
 
 
 def take_first(x):
@@ -105,7 +134,7 @@ parser.add_argument(
     "--mode",
     type=str,
     default="dual",
-    help="Sets the mode of operation (dual, classification, regression)",
+    help="Mode of operation (dual, classification, regression)",
 )
 args = parser.parse_args()
 
@@ -117,7 +146,13 @@ gen_train = GPGenerator(num_tasks=args.tasks_per_epoch)
 gen_test = GPGenerator(num_tasks=64)
 
 # Construct model.
-model = DualConvCNP(small=args.small, mode=args.mode).to(device)
+mode = args.mode
+if mode == "dual":
+    model = DualConvCNP(small=args.small).to(device)
+if mode == "classification":
+    model = ClassConvCNP(small=args.small).to(device)
+if mode == "regression":
+    model = RegConvCNP(small=args.small).to(device)
 
 # Construct optimiser.
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
@@ -130,7 +165,7 @@ for epoch in range(args.epochs):
     print("Training...")
     for batch in gen_train.epoch(device):
         batch = split_off_classification(batch)
-        loss = compute_loss(model, batch)
+        loss = compute_loss(model, batch, mode)
         # Perform gradient step.
         loss.backward()
         opt.step()
@@ -142,7 +177,7 @@ for epoch in range(args.epochs):
         losses = []
         for batch in gen_test.epoch(device):
             batch = split_off_classification(batch)
-            losses.append(compute_loss(model, batch))
+            losses.append(compute_loss(model, batch, mode))
         losses = B.to_numpy(losses)
         error = 1.96 * np.std(losses) / np.sqrt(len(losses))
         print(f"Loss: {np.mean(losses):6.2f} +- {error:6.2f}")
@@ -160,65 +195,74 @@ for epoch in range(args.epochs):
             x_target_reg = batch["x_target_reg"]
             batch["x_target_class"] = B.linspace(torch.float32, *gen_test.x_range, 200)
             batch["x_target_reg"] = B.linspace(torch.float32, *gen_test.x_range, 200)
-        class_prob, (reg_mean, reg_std) = model(batch)
+
+        if mode == "dual":
+            class_prob, (reg_mean, reg_std) = model(batch)
+        if mode == "classification":
+            class_prob = model(batch)
+        if mode == "regression":
+            (reg_mean, reg_std) = model(batch)
+
 
         # Plot for classification:
-        plt.figure()
-        plt.title(f"Classification (Epoch {epoch + 1})")
-        plt.scatter(
-            take_first(batch["x_context_class"]),
-            take_first(batch["y_context_class"]),
-            style="train",
-            label="Context",
-        )
-        plt.scatter(
-            take_first(x_target_class),
-            take_first(batch["y_target_class"]),
-            style="test",
-            label="Target",
-        )
-        plt.plot(
-            take_first(batch["x_target_class"]),
-            take_first(class_prob),
-            style="pred",
-            label="Prediction",
-        )
-        tweak(legend_loc="best")
-        #plt.savefig(wd.file(f"epoch{epoch + 1}_classification.pdf"))
-        run.log_image(name=f"epoch{epoch + 1}_classification", plot=plt)
-        plt.close()
+        if not mode == "regression":
+            plt.figure()
+            plt.title(f"Classification (Epoch {epoch + 1})")
+            plt.scatter(
+                take_first(batch["x_context_class"]),
+                take_first(batch["y_context_class"]),
+                style="train",
+                label="Context",
+            )
+            plt.scatter(
+                take_first(x_target_class),
+                take_first(batch["y_target_class"]),
+                style="test",
+                label="Target",
+            )
+            plt.plot(
+                take_first(batch["x_target_class"]),
+                take_first(class_prob),
+                style="pred",
+                label="Prediction",
+            )
+            tweak(legend_loc="best")
+            #plt.savefig(wd.file(f"epoch{epoch + 1}_classification.pdf"))
+            run.log_image(name=f"epoch{epoch + 1}_classification", plot=plt)
+            plt.close()
 
         # Plot for regression:
-        plt.figure()
-        plt.title(f"Regression (Epoch {epoch + 1})")
-        plt.scatter(
-            take_first(batch["x_context_reg"]),
-            take_first(batch["y_context_reg"]),
-            style="train",
-            label="Context",
-        )
-        plt.scatter(
-            take_first(x_target_reg),
-            take_first(batch["y_target_reg"]),
-            style="test",
-            label="Target",
-        )
-        plt.plot(
-            take_first(batch["x_target_reg"]),
-            take_first(reg_mean),
-            style="pred",
-            label="Prediction",
-        )
-        plt.fill_between(
-            take_first(batch["x_target_reg"]),
-            take_first(reg_mean - 1.96 * reg_std),
-            take_first(reg_mean + 1.96 * reg_std),
-            style="pred",
-        )
-        tweak(legend_loc="best")
-        #plt.savefig(wd.file(f"epoch{epoch + 1}_regression.pdf"))
-        run.log_image(name=f"epoch{epoch + 1}_regression", plot=plt)
-        plt.close()
+        if not mode == "classification":
+            plt.figure()
+            plt.title(f"Regression (Epoch {epoch + 1})")
+            plt.scatter(
+                take_first(batch["x_context_reg"]),
+                take_first(batch["y_context_reg"]),
+                style="train",
+                label="Context",
+            )
+            plt.scatter(
+                take_first(x_target_reg),
+                take_first(batch["y_target_reg"]),
+                style="test",
+                label="Target",
+            )
+            plt.plot(
+                take_first(batch["x_target_reg"]),
+                take_first(reg_mean),
+                style="pred",
+                label="Prediction",
+            )
+            plt.fill_between(
+                take_first(batch["x_target_reg"]),
+                take_first(reg_mean - 1.96 * reg_std),
+                take_first(reg_mean + 1.96 * reg_std),
+                style="pred",
+            )
+            tweak(legend_loc="best")
+            #plt.savefig(wd.file(f"epoch{epoch + 1}_regression.pdf"))
+            run.log_image(name=f"epoch{epoch + 1}_regression", plot=plt)
+            plt.close()
 
         # Save checkpoint
         checkpoint = {
