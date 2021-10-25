@@ -18,3 +18,5 @@ Notes
 	- 2. [Some directory manipulation](https://docs.microsoft.com/en-gb/azure/machine-learning/how-to-log-view-metrics) -> worked!
 - How to load model on CPU?
 	- `checkpoint = torch.load('models/model-1/model1.tar', map_location=torch.device('cpu'))` doesn't work
+	- Try with joblib on Google Colab `size mismatch for conv.after_turn_layers.3.weight: copying a param with shape torch.Size([64, 16, 5]) from checkpoint, the shape in current model is torch.Size([32, 16, 5])` in `model.load_state_dict(…)`
+- Numerical issue not a problem

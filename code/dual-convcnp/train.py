@@ -101,6 +101,12 @@ parser.add_argument(
     default=0.5,
     help="Weight assigned to the classification loss.",
 )
+parser.add_argument(
+    "--mode",
+    type=str,
+    default="dual",
+    help="Sets the mode of operation (dual, classification, regression)",
+)
 args = parser.parse_args()
 
 # Setup working directory.
@@ -111,7 +117,7 @@ gen_train = GPGenerator(num_tasks=args.tasks_per_epoch)
 gen_test = GPGenerator(num_tasks=64)
 
 # Construct model.
-model = DualConvCNP(small=args.small).to(device)
+model = DualConvCNP(small=args.small, mode=args.mode).to(device)
 
 # Construct optimiser.
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)

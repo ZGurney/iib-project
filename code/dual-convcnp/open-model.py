@@ -1,6 +1,7 @@
 import argparse
 import os
 import pickle
+import joblib
 
 import lab.torch as B
 import matplotlib.pyplot as plt
@@ -108,8 +109,7 @@ opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
 # Load model
 
 #checkpoint = torch.load(os.path.join(args.root, args.file_name), map_location=torch.device("cpu"))
-with torch.loading_context(map_location='cpu'):
-    obj = pickle.load(os.path.join(args.root, args.file_name))  # In my case this call is buried deeper in torch-agnostic code
+checkpoint = joblib.load(os.path.join(args.root, args.file_name))
 epoch = checkpoint["epoch"]
 loss = checkpoint["loss"]
 model.load_state_dict(checkpoint["state_dict"])
