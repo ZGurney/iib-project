@@ -72,4 +72,4 @@ class ClassConvCNP(nn.Module):
         z = self.decoder(x_grid, z, batch["x_target_class"])
 
         # Return single parameter for classification
-        return B.sigmoid(z)
+        return z, (0, 0)

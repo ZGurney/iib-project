@@ -1,3 +1,4 @@
+#meeting
 # Daily Note
 
 21 October 2021

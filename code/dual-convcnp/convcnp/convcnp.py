@@ -81,4 +81,4 @@ class DualConvCNP(nn.Module):
         z_reg = self.decoder(x_grid, z_reg, batch["x_target_reg"])
 
         # Return parameters for classification and regression.
-        return B.sigmoid(z_class), (z_reg[:, :, :1], B.exp(z_reg[:, :, 1:]))
+        return z_class, (z_reg[:, :, :1], B.exp(z_reg[:, :, 1:]))

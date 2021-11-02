@@ -1,3 +1,4 @@
+#meeting 
 # Daily Note
 
 18 October 2021

@@ -1,3 +1,4 @@
+#meeting
 # Daily Note
 
 11 October 2021

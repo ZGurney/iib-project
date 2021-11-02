@@ -72,4 +72,4 @@ class RegConvCNP(nn.Module):
         z = self.decoder(x_grid, z, batch["x_target_reg"])
 
         # Return single parameter for classification
-        return (z[:, :, :1], B.exp(z[:, :, 1:]))
+        return 0, (z[:, :, :1], B.exp(z[:, :, 1:]))

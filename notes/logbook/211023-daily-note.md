@@ -4,9 +4,9 @@
 
 To-Do
 - [x] Learn how to save models to produce plots later
-- [ ] Clamp regression standard deviation to prevent numerical issue
-- [ ] Change dual ConvCNP code to train on single datasets
-- [ ] Train three models and produce plots and performance metrics
+- [x] Clamp regression standard deviation to prevent numerical issue
+- [x] Change dual ConvCNP code to train on single datasets
+- [x] Train three models and produce plots and performance metrics
 
 Notes
 - Saving models at each epoch to a folder `_experiments/experiment/saved_models/model1.tar` including epoch, loss as a tuple with value and error, model, optimiser parameters
@@ -22,6 +22,7 @@ Notes
 - Numerical issue not a problem
 - `orange_lamp` is first successful run of ordinary ConvCNP on classification
 - `polite_stamp`is first successful run of ordinary ConvCNP on regression
+- `musing_rose`is using Matern 5/2 kernel
 
 
 Questions for Rich
