@@ -698,3 +698,17 @@ Loss: 141.52 +- 140.74
 Plotting...
 tensor(0.0234, device='cuda:0')
 tensor(1.0398, device='cuda:0')
+
+## 2 November at 11.36 am
+
+Dual
+0.5
+20 epochs
+
+Evaluating epoch 0 Overall loss: 477.50 +- 100.85 Plotting... Classification loss 1: 1035.98 Regression loss 1: 13146.70 Classification loss 2: 4353.97 Regression loss 2: 5456.73 Classification loss 3: 2582.79 Regression loss 3: 9445.82
+
+Starting epoch 1 Training... Evaluating... Overall loss: 105.39 +- 51.74 Plotting... Classification loss 1: 4805.81 Regression loss 1: 394383.31 Classification loss 2: 13499.67 Regression loss 2: 33666.00 Classification loss 3: 8945.90 Regression loss 3: 151560.14
+
+Starting epoch 10 Training... Evaluating... Overall loss: 78.48 +- 32.64 Plotting... Classification loss 1: 5425.94 Regression loss 1: 1417170.75 Classification loss 2: 12050.24 Regression loss 2: 62274.02 Classification loss 3: 10008.95 Regression loss 3: 449448.75
+
+Starting epoch 20 Training... Evaluating... Overall loss: 52.74 +- 42.96 Plotting... Classification loss 1: 4987.53 Regression loss 1: 1283010.75 Classification loss 2: 10913.42 Regression loss 2: 56986.48 Classification loss 3: 9439.56 Regression loss 3: 440131.00

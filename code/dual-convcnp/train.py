@@ -15,14 +15,14 @@ from azureml.core import Run # Import library for logging in Azure
 
 run = Run.get_context() # Access run object for logging
 
-evaluation_tasks = torch.load("evaluation-tasks.pt")
-
 # Enable GPU if it is available.
 if torch.cuda.is_available():
     device = "cuda"
 else:
     device = "cpu"
 
+# Load evaluation tasks already pre-generated
+evaluation_tasks = torch.load("evaluation-tasks.pt", map_location=torch.device(device))
 
 def split_off_classification(batch, proportion_class="random"):
     """Split off a classification data set."""
@@ -110,7 +110,7 @@ parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFo
 parser.add_argument(
     "--root",
     type=str,
-    default="_experiments/experiment",
+    default="outputs",
     help="Directory to store output of experiment.",
 )
 parser.add_argument(
@@ -170,7 +170,7 @@ if mode == "regression":
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
 
 # Plotting script
-def plot_graphs(batch, proportion_class, n):
+def plot_graphs(batch, epoch, proportion_class, n):
     """
     Plot classification and regression graphs for different proportions 
     of classification and regression context points
@@ -217,8 +217,8 @@ def plot_graphs(batch, proportion_class, n):
         label="Prediction",
     )
     tweak(legend_loc="best")
-    plt.savefig(wd.file(f"./outputs/epoch{epoch + 1}_classification{n}.pdf"))
-    run.log_image(name=f"epoch{epoch + 1}_classification{n}", plot=plt)
+    plt.savefig(wd.file(f"epoch{epoch + 1}_classification{n}.pdf"))
+    #run.log_image(name=f"epoch{epoch + 1}_classification{n}", plot=plt)
     plt.close()
 
     # Plot for regression:
@@ -253,17 +253,19 @@ def plot_graphs(batch, proportion_class, n):
         style="pred",
     )
     tweak(legend_loc="best")
-    plt.savefig(wd.file(f"./outputs/epoch{epoch + 1}_regression{n}.pdf"))
-    run.log_image(name=f"epoch{epoch + 1}_regression{n}", plot=plt)
+    plt.savefig(wd.file(f"epoch{epoch + 1}_regression{n}.pdf"))
+    #run.log_image(name=f"epoch{epoch + 1}_regression{n}", plot=plt)
     plt.close()
 
 # Evaluation script
-def evaluate_model(model, mode):
+def evaluate_model(model, mode, epoch):
     with torch.no_grad():
         losses = []
+        i = 0.2
         for batch in evaluation_tasks:
-            batch = split_off_classification(batch)
+            batch = split_off_classification(batch, proportion_class=i)
             losses.append(compute_loss(model, batch, mode))
+            i += 0.2
         losses = B.to_numpy(losses)
         error = 1.96 * np.std(losses) / np.sqrt(len(losses))
         print(f"Overall loss: {np.mean(losses):6.2f} +- {error:6.2f}")
@@ -274,11 +276,11 @@ def evaluate_model(model, mode):
         print("Plotting...")
         
         # Sparse classification data
-        plot_graphs(evaluation_tasks[0], proportion_class=0.2, n=1)
+        plot_graphs(evaluation_tasks[0], epoch, proportion_class=0.2, n=1)
         # Sparse regression data
-        plot_graphs(evaluation_tasks[2], proportion_class=0.8, n=2)
-        # Basic example
-        plot_graphs(evaluation_tasks[3], proportion_class=0.5, n=3)
+        plot_graphs(evaluation_tasks[2], epoch, proportion_class=0.8, n=2)
+        # Basic example with equal numbers
+        plot_graphs(evaluation_tasks[3], epoch, proportion_class=0.5, n=3)
 
         # Save checkpoint
         checkpoint = {
@@ -288,16 +290,14 @@ def evaluate_model(model, mode):
             "optimiser": opt.state_dict(),
         }
 
-        # !!!Check if unecessary!!!
-        # Check if output folder already made
-        if not os.path.isdir("./outputs"):
-            print("Output folder not yet made, initialise folder")
-            os.makedirs('./outputs', exist_ok=True)
-
         # Save the trained model in the outputs folder
         model_file_name = f"model{epoch + 1}.tar"
         with open(model_file_name, "wb") as file:
             joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
+
+# Compute eval loss for epoch 0 (no training)
+print("Evaluating epoch 0")
+evaluate_model(model, mode, epoch=-1)
 
 # Run training loop.
 for epoch in range(args.epochs):
@@ -315,6 +315,6 @@ for epoch in range(args.epochs):
     
     # Compute eval loss and save model.
     print("Evaluating...")
-    evaluate_model(model, mode)
+    evaluate_model(model, mode, epoch)
 
 run.complete()
