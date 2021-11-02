@@ -24,11 +24,11 @@ else:
     device = "cpu"
 
 
-def split_off_classification(batch):
+def split_off_classification(batch, proportion_class="random"):
     """Split off a classification data set."""
     n_context = B.shape(batch["x_context"], 1)
 
-    # Set ratio of classificaiton to 
+    # Set ratio of classification to regression context datapoints
     if proportion_class == "random":
         n_class = np.random.randint(low=1, high=n_context - 1)
     else:
@@ -60,11 +60,11 @@ def compute_loss(model, batch, mode="dual"):
     if mode == "dual":
 
         # Clamp the classification probabilities to prevent the loss for NaNing out.
-        class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
+        #class_prob = class_prob.clamp(1e-4, 1 - 1e-4)
 
         class_loss = -B.sum(
-            batch["y_target_class"] * B.log(class_prob)
-            + (1 - batch["y_target_class"]) * B.log(1 - class_prob)
+            batch["y_target_class"] * LogSigmoid(class_prob)
+            + (1 - batch["y_target_class"]) * LogSigmoid(1 - class_prob)
         )
 
         reg_loss = 0.5 * B.sum(
@@ -170,7 +170,6 @@ if mode == "regression":
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
 
 # Plotting script
-
 def plot_graphs(batch, proportion_class, n):
     """
     Plot classification and regression graphs for different proportions 
@@ -186,8 +185,8 @@ def plot_graphs(batch, proportion_class, n):
         batch["x_target_class"] = B.linspace(torch.float32, *gen_test.x_range, 200)
         batch["x_target_reg"] = B.linspace(torch.float32, *gen_test.x_range, 200)
 
-    class_prob, (reg_mean, reg_std) = model(batch)
-    #class_prob = B.sigmoid(class_prob)
+        class_prob, (reg_mean, reg_std) = model(batch)
+        class_prob = B.sigmoid(class_prob)
 
     for key in batch.keys():
         batch[key] = take_first(batch[key], convert_to_numpy=False)
@@ -259,8 +258,7 @@ def plot_graphs(batch, proportion_class, n):
     plt.close()
 
 # Evaluation script
-
-def evaluate_model(model):
+def evaluate_model(model, mode):
     with torch.no_grad():
         losses = []
         for batch in evaluation_tasks:
@@ -282,25 +280,6 @@ def evaluate_model(model):
         # Basic example
         plot_graphs(evaluation_tasks[3], proportion_class=0.5, n=3)
 
-# Run training loop.
-for epoch in range(args.epochs):
-    print(f"Starting epoch {epoch + 1}")
-
-    # Run training epoch.
-    print("Training...")
-    for batch in gen_train.epoch(device):
-        batch = split_off_classification(batch)
-        loss = compute_loss(model, batch, mode)
-        # Perform gradient step.
-        loss.backward()
-        opt.step()
-        opt.zero_grad()
-
-    with torch.no_grad():
-        # Compute eval loss.
-        print("Evaluating...")
-        evaluate_model(model)
-
         # Save checkpoint
         checkpoint = {
             "epoch": epoch + 1,
@@ -319,5 +298,23 @@ for epoch in range(args.epochs):
         model_file_name = f"model{epoch + 1}.tar"
         with open(model_file_name, "wb") as file:
             joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
+
+# Run training loop.
+for epoch in range(args.epochs):
+    print(f"Starting epoch {epoch + 1}")
+
+    # Run training epoch.
+    print("Training...")
+    for batch in gen_train.epoch(device):
+        batch = split_off_classification(batch)
+        loss = compute_loss(model, batch, mode)
+        # Perform gradient step.
+        loss.backward()
+        opt.step()
+        opt.zero_grad()
+    
+    # Compute eval loss and save model.
+    print("Evaluating...")
+    evaluate_model(model, mode)
 
 run.complete()
