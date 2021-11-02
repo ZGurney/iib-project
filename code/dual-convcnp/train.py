@@ -177,6 +177,18 @@ def plot_graphs(batch, epoch, proportion_class, n):
     """
     batch = split_off_classification(batch, proportion_class)
 
+    # Set up batch to compute loss on single task
+    task = {}
+    for key in batch.keys():
+        task[key] = take_first(batch[key], convert_to_numpy=False)
+    if not mode == "regression":
+        class_loss = compute_loss(model, task, mode="classification")
+        print(f"Classification loss {n}: {class_loss:6.2f}")
+    if not mode == "classification":
+        reg_loss = compute_loss(model, task, mode="regression")
+        print(f"Regression loss {n}: {reg_loss:6.2f}")
+
+
     with B.on_device(device):
         # Set `x_target` to a dense linspace for the plots, but save the original
         # target inputs.
@@ -187,75 +199,69 @@ def plot_graphs(batch, epoch, proportion_class, n):
 
         class_prob, (reg_mean, reg_std) = model(batch)
         class_prob = B.sigmoid(class_prob)
-
-    for key in batch.keys():
-        batch[key] = take_first(batch[key], convert_to_numpy=False)
+    
 
     # Plot for classification:
 
-    class_loss = compute_loss(model, batch, mode="classification")
-    print(f"Classification loss {n}: {class_loss:6.2f}")
-
-    plt.figure()
-    plt.title(f"Classification (Epoch {epoch + 1})")
-    plt.scatter(
-        take_first(batch["x_context_class"]),
-        take_first(batch["y_context_class"]),
-        style="train",
-        label="Context",
-    )
-    plt.scatter(
-        take_first(x_target_class),
-        take_first(batch["y_target_class"]),
-        style="test",
-        label="Target",
-    )
-    plt.plot(
-        take_first(batch["x_target_class"]),
-        take_first(class_prob),
-        style="pred",
-        label="Prediction",
-    )
-    tweak(legend_loc="best")
-    plt.savefig(wd.file(f"epoch{epoch + 1}_classification{n}.pdf"))
-    #run.log_image(name=f"epoch{epoch + 1}_classification{n}", plot=plt)
-    plt.close()
+    if not mode == "regression":
+        plt.figure()
+        plt.title(f"Classification (Epoch {epoch + 1})")
+        plt.scatter(
+            take_first(batch["x_context_class"]),
+            take_first(batch["y_context_class"]),
+            style="train",
+            label="Context",
+        )
+        plt.scatter(
+            take_first(x_target_class),
+            take_first(batch["y_target_class"]),
+            style="test",
+            label="Target",
+        )
+        plt.plot(
+            take_first(batch["x_target_class"]),
+            take_first(class_prob),
+            style="pred",
+            label="Prediction",
+        )
+        tweak(legend_loc="best")
+        plt.savefig(wd.file(f"epoch{epoch + 1}_classification{n}.pdf"))
+        #run.log_image(name=f"epoch{epoch + 1}_classification{n}", plot=plt)
+        plt.close()
 
     # Plot for regression:
 
-    reg_loss = compute_loss(model, batch, mode="regression")
-    print(f"Regression loss {n}: {reg_loss:6.2f}")
-
-    plt.figure()
-    plt.title(f"Regression (Epoch {epoch + 1})")
-    plt.scatter(
-        take_first(batch["x_context_reg"]),
-        take_first(batch["y_context_reg"]),
-        style="train",
-        label="Context",
-    )
-    plt.scatter(
-        take_first(x_target_reg),
-        take_first(batch["y_target_reg"]),
-        style="test",
-        label="Target",
-    )
-    plt.plot(
-        take_first(batch["x_target_reg"]),
-        take_first(reg_mean),
-        style="pred",
-        label="Prediction",
-    )
-    plt.fill_between(
-        take_first(batch["x_target_reg"]),
-        take_first(reg_mean - 1.96 * reg_std),
-        take_first(reg_mean + 1.96 * reg_std),
-        style="pred",
-    )
-    tweak(legend_loc="best")
-    plt.savefig(wd.file(f"epoch{epoch + 1}_regression{n}.pdf"))
-    #run.log_image(name=f"epoch{epoch + 1}_regression{n}", plot=plt)
-    plt.close()
+    if not mode == "classification":
+        plt.figure()
+        plt.title(f"Regression (Epoch {epoch + 1})")
+        plt.scatter(
+            take_first(batch["x_context_reg"]),
+            take_first(batch["y_context_reg"]),
+            style="train",
+            label="Context",
+        )
+        plt.scatter(
+            take_first(x_target_reg),
+            take_first(batch["y_target_reg"]),
+            style="test",
+            label="Target",
+        )
+        plt.plot(
+            take_first(batch["x_target_reg"]),
+            take_first(reg_mean),
+            style="pred",
+            label="Prediction",
+        )
+        plt.fill_between(
+            take_first(batch["x_target_reg"]),
+            take_first(reg_mean - 1.96 * reg_std),
+            take_first(reg_mean + 1.96 * reg_std),
+            style="pred",
+        )
+        tweak(legend_loc="best")
+        plt.savefig(wd.file(f"epoch{epoch + 1}_regression{n}.pdf"))
+        #run.log_image(name=f"epoch{epoch + 1}_regression{n}", plot=plt)
+        plt.close()
 
 # Evaluation script
 def evaluate_model(model, mode, epoch):
@@ -277,6 +283,8 @@ def evaluate_model(model, mode, epoch):
         
         # Sparse classification data
         plot_graphs(evaluation_tasks[0], epoch, proportion_class=0.2, n=1)
+        # TEST: Sparse classification data
+        plot_graphs(evaluation_tasks[1], epoch, proportion_class=0.2, n=1.5)
         # Sparse regression data
         plot_graphs(evaluation_tasks[2], epoch, proportion_class=0.8, n=2)
         # Basic example with equal numbers
