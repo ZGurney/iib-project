@@ -52,8 +52,6 @@ test_comparison["x_context"] = B.sort(test_comparison["x_context"], axis=1)
 test_comparison["y_target"] = test_comparison["y_target"][:, B.flatten(B.argsort(test_comparison["x_target"], axis=1, descending=True)), :]
 test_comparison["x_target"] = B.sort(test_comparison["x_target"], axis=1, descending=True)
 
-print(test_comparison["x_target"])
-
 test_comparison = split_off_classification(test_comparison, 0.5)
 
 plt.figure()

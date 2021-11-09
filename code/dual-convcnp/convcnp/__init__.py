@@ -5,6 +5,7 @@ import plum
 _dispatch = plum.Dispatcher()
 
 from .data import *
+from .data_seed import *
 from .encoder import *
 from .decoder import *
 from .discretisation import *
