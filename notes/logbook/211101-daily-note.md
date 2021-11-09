@@ -18,6 +18,5 @@
 	- Print error at each iteration
 	- When evaluating average loss, set 4 batches with 0.2, 0.4, 0.6, 0.8: `batches = [split_classification(batch, proportion_class=a) for a in range(0.2, 0.8, step=0.2)]` then later on can plot performance on `take_first(batches)`
 	- Plot oracle GP and original function
-	
-	1012
-	
+- Will now be testing with proportion_loss 0.2, 0.4, 0.6, 0.8
+- See GitHub for summary of resolved problems

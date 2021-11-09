@@ -81,3 +81,9 @@ notes/.obsidian/
 ### Python ###
 
 *.pyc
+code/dual-convcnp/_experiments/
+code/dual-convcnp/convcnp/__pycache__/
+
+### Files ###
+
+code/dual-convcnp/extra.py

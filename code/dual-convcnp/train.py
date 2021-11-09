@@ -104,71 +104,6 @@ def take_first(x, convert_to_numpy=True):
             x = B.to_numpy(x)
     return x
 
-
-# Parse command line arguments.
-parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    "--root",
-    type=str,
-    default="outputs",
-    help="Directory to store output of experiment.",
-)
-parser.add_argument(
-    "--epochs",
-    type=int,
-    default=100,
-    help="Number of epochs to run for.",
-)
-parser.add_argument(
-    "--tasks_per_epoch",
-    type=int,
-    default=16_384,
-    help="Number of tasks per epoch.",
-)
-parser.add_argument(
-    "--small",
-    action="store_true",
-    help="Use a small CNN architecture.",
-)
-parser.add_argument(
-    "--rate",
-    type=float,
-    default=5e-3,
-    help="Learning rate.",
-)
-parser.add_argument(
-    "--alpha",
-    type=float,
-    default=0.5,
-    help="Weight assigned to the classification loss.",
-)
-parser.add_argument(
-    "--mode",
-    type=str,
-    default="dual",
-    help="Mode of operation (dual, classification, regression)",
-)
-args = parser.parse_args()
-
-# Setup working directory.
-wd = WorkingDirectory(args.root, seed=0, override=True)
-
-# Setup data generator.
-gen_train = GPGenerator(num_tasks=args.tasks_per_epoch)
-gen_test = GPGenerator(num_tasks=64)
-
-# Construct model.
-mode = args.mode
-if mode == "dual":
-    model = DualConvCNP(small=args.small).to(device)
-if mode == "classification":
-    model = ClassConvCNP(small=args.small).to(device)
-if mode == "regression":
-    model = RegConvCNP(small=args.small).to(device)
-
-# Construct optimiser.
-opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
-
 # Plotting script
 def plot_graphs(batch, epoch, proportion_class, n):
     """
@@ -284,11 +219,11 @@ def evaluate_model(model, mode, epoch):
         # Sparse classification data
         plot_graphs(evaluation_tasks[0], epoch, proportion_class=0.2, n=1)
         # TEST: Sparse classification data
-        plot_graphs(evaluation_tasks[1], epoch, proportion_class=0.2, n=1.5)
+        plot_graphs(evaluation_tasks[1], epoch, proportion_class=0.2, n=2)
         # Sparse regression data
-        plot_graphs(evaluation_tasks[2], epoch, proportion_class=0.8, n=2)
+        plot_graphs(evaluation_tasks[2], epoch, proportion_class=0.8, n=3)
         # Basic example with equal numbers
-        plot_graphs(evaluation_tasks[3], epoch, proportion_class=0.5, n=3)
+        plot_graphs(evaluation_tasks[3], epoch, proportion_class=0.5, n=4)
 
         # Save checkpoint
         checkpoint = {
@@ -303,8 +238,73 @@ def evaluate_model(model, mode, epoch):
         with open(model_file_name, "wb") as file:
             joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
 
+
+# Parse command line arguments.
+parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    "--root",
+    type=str,
+    default="outputs",
+    help="Directory to store output of experiment.",
+)
+parser.add_argument(
+    "--epochs",
+    type=int,
+    default=100,
+    help="Number of epochs to run for.",
+)
+parser.add_argument(
+    "--tasks_per_epoch",
+    type=int,
+    default=16_384,
+    help="Number of tasks per epoch.",
+)
+parser.add_argument(
+    "--small",
+    action="store_true",
+    help="Use a small CNN architecture.",
+)
+parser.add_argument(
+    "--rate",
+    type=float,
+    default=5e-3,
+    help="Learning rate.",
+)
+parser.add_argument(
+    "--alpha",
+    type=float,
+    default=0.5,
+    help="Weight assigned to the classification loss.",
+)
+parser.add_argument(
+    "--mode",
+    type=str,
+    default="dual",
+    help="Mode of operation (dual, classification, regression)",
+)
+args = parser.parse_args()
+
+# Setup working directory.
+wd = WorkingDirectory(args.root, seed=0, override=True)
+
+# Setup data generator.
+gen_train = GPGenerator(num_tasks=args.tasks_per_epoch)
+gen_test = GPGenerator(num_tasks=64)
+
+# Construct model.
+mode = args.mode
+if mode == "dual":
+    model = DualConvCNP(small=args.small).to(device)
+if mode == "classification":
+    model = ClassConvCNP(small=args.small).to(device)
+if mode == "regression":
+    model = RegConvCNP(small=args.small).to(device)
+
+# Construct optimiser.
+opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
+
 # Compute eval loss for epoch 0 (no training)
-print("Evaluating epoch 0")
+print("Evaluating epoch 0 (before training)")
 evaluate_model(model, mode, epoch=-1)
 
 # Run training loop.
