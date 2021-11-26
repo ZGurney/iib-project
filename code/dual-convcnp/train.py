@@ -9,11 +9,7 @@ import torch
 from wbml.experiment import WorkingDirectory
 from wbml.plot import tweak
 
-from convcnp import DualConvCNP, ClassConvCNP, RegConvCNP, GPGenerator
-
-from azureml.core import Run # Import library for logging in Azure
-
-run = Run.get_context() # Access run object for logging
+import convcnp
 
 # Enable GPU if it is available.
 if torch.cuda.is_available():
@@ -21,7 +17,7 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
-# Load evaluation tasks already pre-generated
+# Load evaluation tasks already pre-generated.
 evaluation_tasks = torch.load("evaluation-tasks.pt", map_location=torch.device(device))
 
 def split_off_classification(batch, proportion_class="random"):
@@ -35,6 +31,8 @@ def split_off_classification(batch, proportion_class="random"):
         n_class = int(proportion_class*n_context)
 
     return {
+        "x": batch["x"],
+        "y": batch["y"],
         "x_context_class": batch["x_context"][:, :n_class, :],
         "y_context_class": (B.sign(batch["y_context"][:, :n_class, :]) + 1) / 2,
         "x_target_class": batch["x_target"][:, :n_class, :],
@@ -114,8 +112,8 @@ def plot_graphs(batch, epoch, proportion_class, n):
 
     # Set up batch to compute loss on single task
     task = {}
-    for key in batch.keys():
-        task[key] = take_first(batch[key], convert_to_numpy=False)
+    for key, value in batch.items():
+        task[key] = take_first(value, convert_to_numpy=False)
     if not mode == "regression":
         class_loss = compute_loss(model, task, mode="classification")
         print(f"Classification loss {n}: {class_loss:6.2f}")
@@ -161,7 +159,6 @@ def plot_graphs(batch, epoch, proportion_class, n):
         )
         tweak(legend_loc="best")
         plt.savefig(wd.file(f"epoch{epoch + 1}_classification{n}.pdf"))
-        #run.log_image(name=f"epoch{epoch + 1}_classification{n}", plot=plt)
         plt.close()
 
     # Plot for regression:
@@ -195,52 +192,66 @@ def plot_graphs(batch, epoch, proportion_class, n):
         )
         tweak(legend_loc="best")
         plt.savefig(wd.file(f"epoch{epoch + 1}_regression{n}.pdf"))
-        #run.log_image(name=f"epoch{epoch + 1}_regression{n}", plot=plt)
         plt.close()
 
 # Evaluation script
 def evaluate_model(model, mode, epoch):
-    with torch.no_grad():
-        losses = []
-        i = 0.2
-        for batch in evaluation_tasks:
-            batch = split_off_classification(batch, proportion_class=i)
-            losses.append(compute_loss(model, batch, mode))
-            i += 0.2
-        losses = B.to_numpy(losses)
-        error = 1.96 * np.std(losses) / np.sqrt(len(losses))
-        print(f"Overall loss: {np.mean(losses):6.2f} +- {error:6.2f}")
-        run.log(name="loss", value=np.mean(losses))
-        run.log(name="error", value=error)
+    losses = []
+    i = 0.2
+    for batch in evaluation_tasks:
+        batch = split_off_classification(batch, proportion_class=i)
+        losses.append(compute_loss(model, batch, mode))
+        i += 0.2
+    losses = B.to_numpy(losses)
+    error = 1.96 * np.std(losses) / np.sqrt(len(losses))
+    print(f"Overall loss: {np.mean(losses):6.2f} +- {error:6.2f}")
 
-        # Produce some plots.
-        print("Plotting...")
-        
-        # Sparse classification data
-        plot_graphs(evaluation_tasks[0], epoch, proportion_class=0.2, n=1)
-        # TEST: Sparse classification data
-        plot_graphs(evaluation_tasks[1], epoch, proportion_class=0.2, n=2)
-        # Sparse regression data
-        plot_graphs(evaluation_tasks[2], epoch, proportion_class=0.8, n=3)
-        # Basic example with equal numbers
-        plot_graphs(evaluation_tasks[3], epoch, proportion_class=0.5, n=4)
+    # Produce some plots.
+    print("Plotting...")
+    
+    kernel = stheno.EQ().stretch(0.25)
+    seed = 2
+    plot_graphs(generate_task(kernel, seed), epoch, 0.5, n=1)
 
-        # Save checkpoint
-        checkpoint = {
-            "epoch": epoch + 1,
-            "loss": (np.mean(losses), error),
-            "state_dict": model.state_dict(),
-            "optimiser": opt.state_dict(),
-        }
+    # Save checkpoint
+    checkpoint = {
+        "epoch": epoch + 1,
+        "loss": (np.mean(losses), error),
+        "state_dict": model.state_dict(),
+        "optimiser": opt.state_dict(),
+    }
 
-        # Save the trained model in the outputs folder
-        model_file_name = f"model{epoch + 1}.tar"
-        with open(model_file_name, "wb") as file:
-            joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
+    # Save the trained model in the outputs folder
+    model_file_name = f"model{epoch + 1}.tar"
+    with open(model_file_name, "wb") as file:
+        joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
 
+def generate_task(kernel, seed):
+    """
+    Generates a single task with specified seed
+    """
+    gen_test_comparison = convcnp.GPGenerator2(kernel=kernel, noise=0, seed=seed, batch_size=1, num_tasks=1, num_context_points=50)
+    test_comparison = gen_test_comparison.generate_batch()
+
+    # Sort both the context and target sets
+    test_comparison["y_context"] = test_comparison["y_context"][:, B.flatten(B.argsort(test_comparison["x_context"], axis=1)), :]
+    test_comparison["x_context"] = B.sort(test_comparison["x_context"], axis=1)
+    test_comparison["y_target"] = test_comparison["y_target"][:, B.flatten(B.argsort(test_comparison["x_target"], axis=1, descending=True)), :]
+    test_comparison["x_target"] = B.sort(test_comparison["x_target"], axis=1, descending=True)
+
+    return test_comparison
 
 # Parse command line arguments.
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
+parser.add_argument(
+    "--data",
+    choices=['eq',
+             'matern',
+             'noisy-mixture',
+             'weakly-periodic',
+             'sawtooth'],
+    default="eq"
+    help='Data set to train the CNP on. ')
 parser.add_argument(
     "--root",
     type=str,
@@ -278,7 +289,7 @@ parser.add_argument(
 )
 parser.add_argument(
     "--mode",
-    type=str,
+    choices=["dual", "classification", "regression"],
     default="dual",
     help="Mode of operation (dual, classification, regression)",
 )
@@ -288,17 +299,17 @@ args = parser.parse_args()
 wd = WorkingDirectory(args.root, seed=0, override=True)
 
 # Setup data generator.
-gen_train = GPGenerator(num_tasks=args.tasks_per_epoch)
-gen_test = GPGenerator(num_tasks=64)
+gen_train = convcnp.GPGenerator(num_tasks=args.tasks_per_epoch)
+gen_test = convcnp.GPGenerator(num_tasks=64)
 
 # Construct model.
 mode = args.mode
 if mode == "dual":
-    model = DualConvCNP(small=args.small).to(device)
+    model = convcnp.DualConvCNP(small=args.small).to(device)
 if mode == "classification":
-    model = ClassConvCNP(small=args.small).to(device)
+    model = convcnp.ClassConvCNP(small=args.small).to(device)
 if mode == "regression":
-    model = RegConvCNP(small=args.small).to(device)
+    model = convcnp.RegConvCNP(small=args.small).to(device)
 
 # Construct optimiser.
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
@@ -324,5 +335,3 @@ for epoch in range(args.epochs):
     # Compute eval loss and save model.
     print("Evaluating...")
     evaluate_model(model, mode, epoch)
-
-run.complete()
