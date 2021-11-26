@@ -56,8 +56,8 @@ parser.add_argument(
 )
 parser.add_argument(
     "--output_structure",
-    type=list,
-    default=[1,1]
+    type=tuple,
+    default=(1,1)
     help="Number of discrete binary outputs and continuous outputs",
 )
 args = parser.parse_args()
@@ -70,7 +70,7 @@ data_train = convcnp.DataGenerator(num_tasks=args.tasks_per_epoch)
 data_test = convcnp.DataGenerator(num_tasks=64)
 
 # Construct model.
-model = convcnp.MultiConvCNP(small=args.small).to(device)
+model = convcnp.MultiConvCNP(small=args.small, output_structure=args.output_structure).to(device)
 
 # Construct optimiser.
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
@@ -92,7 +92,7 @@ for epoch in range(args.epochs):
         loss.backward()
         opt.step()
         opt.zero_grad()
-    
+
     # Compute eval loss and save model.
     print("Evaluating...")
     util.evaluate_model(model, data_test, epoch)

@@ -17,14 +17,15 @@ class MultiConvCNP(nn.Module):
         sigma: float = 0.1,
         points_per_unit: float = 32,
         small: bool = False,
+        output_structure: tuple = (1, 1),
     ):
         super(MultiConvCNP, self).__init__()
 
         # Construct CNN:
         self.conv = UNet(
             dimensionality=1,
-            in_channels=4,  # Two for regression and two for classification
-            out_channels=3,  # Two for mean and variance and one for class. prob.
+            in_channels=int(2*(output_structure[0] + output_structure[1])),  # Two for each discrete and continuous output
+            out_channels=int(output_structure[0] + 2*output_structure[1]),  # One for class. prob. and two for mean and variance
             channels=(8, 16, 16, 32) if small else (8, 16, 16, 32, 32, 64),
         )
 
@@ -47,28 +48,20 @@ class MultiConvCNP(nn.Module):
 
     def forward(self, batch):
         # Ensure that inputs are of the right shape.
-        batch = {k: convert_batched_data(v) for k, v in batch.items()}
+        batch = [{k: convert_batched_data(v) for k, v in output.items()} for output in batch]
 
         # Construct discretisation.
-        with B.on_device(batch["x_context_class"]):
-            x_grid = self.disc(
-                batch["x_context_class"],
-                batch["x_target_class"],
-                batch["x_context_reg"],
-                batch["x_target_reg"],
-            )[None, :, None]
+        with B.on_device(batch[0]["x_context"]):
+            x_grid = self.disc(batch)[None, :, None]
 
-        # Run encoders.
-        z_class = self.encoder(
-            batch["x_context_class"],
-            batch["y_context_class"],
-            x_grid,
-        )
-        z_reg = self.encoder(
-            batch["x_context_reg"],
-            batch["y_context_reg"],
-            x_grid,
-        )
+            # Run encoders.
+            z = [] # This needs to be converted to torch tensor, then B.concat operation not needed
+            for output in batch:
+                z.append(self.encoder(
+                    output["x_context"],
+                    output["y_context"],
+                    x_grid,
+                ))
 
         # Run CNN.
         z = B.concat(z_class, z_reg, axis=1)

@@ -12,10 +12,16 @@ class Discretisation1d:
         self.multiple = multiple
         self.margin = margin
 
-    def __call__(self, *args):
-        args = [arg for arg in args if B.length(arg) > 0]
-        grid_min = min([B.to_numpy(B.min(x)) for x in args]) - self.margin
-        grid_max = max([B.to_numpy(B.max(x)) for x in args]) + self.margin
+    def __call__(self, batch):
+        # Create list of x_values from each output.
+        x_values = []
+        for output in batch:
+            x_values.append(output["x_context"])
+            x_values.append(output["x_target"])
+        x_values = [x for x in x_values if B.length(x) > 0]
+
+        grid_min = min([B.to_numpy(B.min(x)) for x in x_values]) - self.margin
+        grid_max = max([B.to_numpy(B.max(x)) for x in x_values]) + self.margin
 
         # Account for snapping to the grid (below).
         grid_min -= self.resolution
@@ -33,7 +39,7 @@ class Discretisation1d:
 
         # Produce the grid.
         return B.linspace(
-            B.dtype(args[0]),
+            B.dtype(x_values[0]),
             grid_start,
             grid_start + (n - 1) * self.resolution,
             n,
