@@ -87,3 +87,5 @@ code/dual-convcnp/convcnp/__pycache__/
 ### Files ###
 
 code/dual-convcnp/extra.py
+.swp
+*.pickle
