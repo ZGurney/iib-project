@@ -27,7 +27,7 @@ class SetConv1dEncoder(nn.Module):
         weights = B.exp(-0.5 * dists2 / B.exp(2 * self.log_scale))
 
         # Interpolate to grid.
-        z = B.matmul(weights, z)
+        z = B.matmul(weights.float(), z.float())
 
         # Normalise by density channel.
         z = B.concat(z[:, :, :1], z[:, :, 1:] / (z[:, :, :1] + 1e-8), axis=2)

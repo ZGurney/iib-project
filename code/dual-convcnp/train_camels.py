@@ -8,8 +8,10 @@ import numpy as np
 import torch
 from wbml.experiment import WorkingDirectory
 from wbml.plot import tweak
+import pickle
 
 import convcnp
+import data_generator
 
 # Enable GPU if it is available.
 if torch.cuda.is_available():
@@ -17,31 +19,44 @@ if torch.cuda.is_available():
 else:
     device = "cpu"
 
-# Load evaluation tasks already pre-generated.
-evaluation_tasks = torch.load("evaluation-tasks.pt", map_location=torch.device(device))
+# Open file with pickle
+file_path = "data_generator/maurer.pickle"
+file = open(file_path, "rb")
+data = pickle.load(file)
+file.close()
 
-def split_off_classification(batch, proportion_class="random"):
-    """Split off a classification data set."""
-    n_context = B.shape(batch["x_context"], 1)
+HydroGenerator = data_generator.HydroGenerator(
+    dict_df = data,
+    channels_c = ["PRCP(mm/day)", "Q"],
+    channels_t = ["PRCP(mm/day)", "Q"],
+)
 
-    # Set ratio of classification to regression context datapoints
-    if proportion_class == "random":
-        n_class = np.random.randint(low=1, high=n_context - 1)
-    else:
-        n_class = int(proportion_class*n_context)
+def threshold_data(data, threshold_value):
+    formatted_data = torch.unsqueeze(data[:, :, 0], 2)
+    thresholded_data = (B.sign(formatted_data - threshold_value*torch.ones_like(formatted_data)) + 1) / 2
+    return thresholded_data
 
-    return {
-        "x": batch["x"],
-        "y": batch["y"],
-        "x_context_class": batch["x_context"][:, :n_class, :],
-        "y_context_class": (B.sign(batch["y_context"][:, :n_class, :]) + 1) / 2,
-        "x_target_class": batch["x_target"][:, :n_class, :],
-        "y_target_class": (B.sign(batch["y_target"][:, :n_class, :]) + 1) / 2,
-        "x_context_reg": batch["x_context"][:, n_class:, :],
-        "y_context_reg": batch["y_context"][:, n_class:, :],
-        "x_target_reg": batch["x_target"][:, n_class:, :],
-        "y_target_reg": batch["y_target"][:, n_class:, :],
-    }
+def generate_batches(num_batches):
+    """Generate batches from the CAMELS dataset"""
+    
+    batches = []
+    for i in range(num_batches):
+        batch = HydroGenerator.generate_task()
+        batch = {
+            "x": batch["x"],
+            "y": batch["y"],
+            "x_context_class": batch["x_context"],
+            "asds": (B.sign(tensor - torch.ones_like(tensor)) + 1) / 2
+            "y_context_class": torch.unsqueeze(batch["y_context"][:, :, 1], 2),
+            "x_target_class": batch["x_target"],
+            "y_target_class": torch.unsqueeze(batch["y_target"][:, :, 1], 2),
+            "x_context_reg": batch["x_context"],
+            "y_context_reg": torch.unsqueeze(batch["y_context"][:, :, 0], 2),
+            "x_target_reg": batch["x_target"],
+            "y_target_reg": torch.unsqueeze(batch["y_target"][:, :, 0], 2),
+        }
+        batches.append(batch)
+    return batches
 
 
 def compute_loss(model, batch, mode="dual"):
@@ -103,12 +118,11 @@ def take_first(x, convert_to_numpy=True):
     return x
 
 # Plotting script
-def plot_graphs(batch, epoch, proportion_class, n):
+def plot_graphs(batch, epoch, n):
     """
     Plot classification and regression graphs for different proportions 
     of classification and regression context points
     """
-    batch = split_off_classification(batch, proportion_class)
 
     # Set up batch to compute loss on single task
     task = {}
@@ -127,8 +141,8 @@ def plot_graphs(batch, epoch, proportion_class, n):
         # target inputs.
         x_target_class = batch["x_target_class"]
         x_target_reg = batch["x_target_reg"]
-        batch["x_target_class"] = B.linspace(torch.float32, *gen_test.x_range, 200)
-        batch["x_target_reg"] = B.linspace(torch.float32, *gen_test.x_range, 200)
+        batch["x_target_class"] = B.linspace(torch.float32, *HydroGenerator.x_range, 200)
+        batch["x_target_reg"] = B.linspace(torch.float32, *HydroGenerator.x_range, 200)
 
         class_prob, (reg_mean, reg_std) = model(batch)
         class_prob = B.sigmoid(class_prob)
@@ -198,8 +212,7 @@ def plot_graphs(batch, epoch, proportion_class, n):
 def evaluate_model(model, mode, epoch):
     losses = []
     i = 0.2
-    for batch in evaluation_tasks:
-        batch = split_off_classification(batch, proportion_class=i)
+    for batch in batches_test:
         losses.append(compute_loss(model, batch, mode))
         i += 0.2
     losses = B.to_numpy(losses)
@@ -208,10 +221,7 @@ def evaluate_model(model, mode, epoch):
 
     # Produce some plots.
     print("Plotting...")
-    
-    kernel = stheno.EQ().stretch(0.25)
-    seed = 2
-    plot_graphs(generate_task(kernel, seed), epoch, 0.5, n=1)
+    plot_graphs(batches_test[0], epoch, n=1)
 
     # Save checkpoint
     checkpoint = {
@@ -226,33 +236,8 @@ def evaluate_model(model, mode, epoch):
     with open(model_file_name, "wb") as file:
         joblib.dump(value=checkpoint, filename=os.path.join('./outputs/', model_file_name))
 
-def generate_task(kernel, seed):
-    """
-    Generates a single task with specified seed
-    """
-    gen_test_comparison = convcnp.GPGenerator2(kernel=kernel, noise=0, seed=seed, batch_size=1, num_tasks=1, num_context_points=50)
-    test_comparison = gen_test_comparison.generate_batch()
-
-    # Sort both the context and target sets
-    test_comparison["y_context"] = test_comparison["y_context"][:, B.flatten(B.argsort(test_comparison["x_context"], axis=1)), :]
-    test_comparison["x_context"] = B.sort(test_comparison["x_context"], axis=1)
-    test_comparison["y_target"] = test_comparison["y_target"][:, B.flatten(B.argsort(test_comparison["x_target"], axis=1, descending=True)), :]
-    test_comparison["x_target"] = B.sort(test_comparison["x_target"], axis=1, descending=True)
-
-    return test_comparison
-
 # Parse command line arguments.
 parser = argparse.ArgumentParser(formatter_class=argparse.ArgumentDefaultsHelpFormatter)
-parser.add_argument(
-    "--data",
-    choices=['eq',
-             'matern',
-             'noisy-mixture',
-             'weakly-periodic',
-             'sawtooth'],
-    default="eq",
-    help='Data set to train the CNP on. '
-)
 parser.add_argument(
     "--root",
     type=str,
@@ -300,8 +285,8 @@ args = parser.parse_args()
 wd = WorkingDirectory(args.root, seed=0, override=True)
 
 # Setup data generator.
-gen_train = convcnp.GPGenerator(num_tasks=args.tasks_per_epoch)
-gen_test = convcnp.GPGenerator(num_tasks=64)
+batches_train = generate_batches(num_batches=2**8)
+batches_test = generate_batches(num_batches=4)
 
 # Construct model.
 mode = args.mode
@@ -325,8 +310,7 @@ for epoch in range(args.epochs):
 
     # Run training epoch.
     print("Training...")
-    for batch in gen_train.epoch(device):
-        batch = split_off_classification(batch)
+    for batch in batches_train:
         loss = compute_loss(model, batch, mode)
         # Perform gradient step.
         loss.backward()
