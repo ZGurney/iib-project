@@ -118,7 +118,7 @@ def plot_graphs(batch, epoch, i):
             style="test",
             label="Target",
         )
-        if output["type"] = "classification":
+        if output["type"] == "classification":
             plt.plot(
                 x_dense,
                 take_first(prediction)

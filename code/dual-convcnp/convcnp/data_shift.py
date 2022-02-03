@@ -53,6 +53,10 @@ class GPGeneratorShiftedClassification:
         shift (float, optional): Shift between the regression data set and classification
 
             data set. Defaults to `0.5`.
+        
+        mode (str, optional): Location of target and context points can either be `random`
+
+            or `disjoint`. Defaults to `random`.
 
         device (str, optional): Device on which to generate data. If no device is given,
 
@@ -85,6 +89,8 @@ class GPGeneratorShiftedClassification:
         proportion_class="random",
 
         shift=0.5,
+
+        mode="random", 
 
         device=None,
 
@@ -139,6 +145,8 @@ class GPGeneratorShiftedClassification:
         self.proportion_class = proportion_class
 
         self.shift = shift
+
+        self.mode = mode
 
 
 
@@ -222,18 +230,21 @@ class GPGeneratorShiftedClassification:
 
         else:
 
-            num_class_context_points = int(proportion_class*num_context_points)
+            num_class_context_points = int(self.proportion_class*num_context_points)
+
             num_reg_context_points = num_context_points - num_class_context_points
-            num_class_target_points = int(proportion_class*num_target_points)
+
+            num_class_target_points = int(self.proportion_class*num_target_points)
+
             num_reg_target_points = num_target_points - num_class_target_points
 
 
 
-        def sample_x(num):
+        def sample_x(num, x_range=self.x_range):
 
             with B.on_device(self.device):
 
-                lower, upper = self.x_range
+                lower, upper = x_range
 
                 shape = (self.batch_size, int(num), 1)
 
@@ -245,13 +256,31 @@ class GPGeneratorShiftedClassification:
 
         # Sample inputs.
 
-        x_context_reg = sample_x(num_reg_context_points)
+        if self.mode == "disjoint":
 
-        x_context_class = sample_x(num_class_context_points)
+            x_middle = (self.x_range[1] + self.x_range[0]) / 2 # Question: does this need to be enforced as an integer?
 
-        x_target_reg = sample_x(num_reg_target_points)
+            x_range_left = (self.x_range[0], x_middle)
 
-        x_target_class = sample_x(num_class_target_points)
+            x_range_right = (x_middle, self.x_range[1])
+
+            x_context_reg = sample_x(num_reg_context_points, x_range_left)
+
+            x_context_class = sample_x(num_class_context_points, x_range_right)
+
+            x_target_reg = sample_x(num_reg_target_points, x_range_right)
+
+            x_target_class = sample_x(num_class_target_points, x_range_left)
+
+        else:
+
+            x_context_reg = sample_x(num_reg_context_points)
+
+            x_context_class = sample_x(num_class_context_points)
+
+            x_target_reg = sample_x(num_reg_target_points)
+
+            x_target_class = sample_x(num_class_target_points)
 
 
 
