@@ -83,6 +83,14 @@ class DataGenerator(metaclass=abc.ABCMeta):
                  max_test_points=30):
         self.batch_size = batch_size
         self.num_tasks = num_tasks
+        self.num_batches = num_tasks // batch_size
+
+        if self.num_batches * batch_size != num_tasks:
+            raise ValueError(
+                f"Number of tasks {num_tasks} must be a multiple of "
+                f"the batch size {batch_size}."
+            )
+
         self.x_range = x_range
         self.min_train_points = min_train_points
         self.min_test_points = min_test_points
@@ -255,6 +263,17 @@ class HydroGenerator(DataGenerator):
                             device=self.device)
 
         return task
+
+    def epoch(self):
+        """Construct a generator for an epoch.
+        Returns:
+            generator: Generator for an epoch.
+        """
+
+        def lazy_gen_batch():
+            return self.generate_task()
+
+        return (lazy_gen_batch() for _ in range(self.num_batches))
 
     def generate_test_task(self,year,basin):
         task = {'x': [],

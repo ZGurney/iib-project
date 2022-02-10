@@ -13,6 +13,8 @@ import pickle
 import convcnp
 import data_generator
 
+x_range = (0,1)
+
 # Enable GPU if it is available.
 if torch.cuda.is_available():
     device = "cuda"
@@ -25,39 +27,33 @@ file = open(file_path, "rb")
 data = pickle.load(file)
 file.close()
 
-HydroGenerator = data_generator.HydroGenerator(
-    dict_df = data,
-    channels_c = ["PRCP(mm/day)", "Q"],
-    channels_t = ["PRCP(mm/day)", "Q"],
-)
+gen_test_save = data_generator.HydroGenerator(dict_df=data,
+                num_tasks = 64,
+                channels_c = ['PRCP(mm/day)', 'Q'],
+                channels_t = ['PRCP(mm/day)', 'Q'])
+evaluation_tasks = list(gen_test_save.epoch())
+print(B.shape(evaluation_tasks))
+torch.save(evaluation_tasks, "evaluation-tasks-camels.pt")
 
-def threshold_data(data, threshold_value):
-    formatted_data = torch.unsqueeze(data[:, :, 0], 2)
-    thresholded_data = (B.sign(formatted_data - threshold_value*torch.ones_like(formatted_data)) + 1) / 2
-    return thresholded_data
+def split_off_classification(batch, threshold=1.0):
+    """Split off a classification data set."""
 
-def generate_batches(num_batches):
-    """Generate batches from the CAMELS dataset"""
-    
-    batches = []
-    for i in range(num_batches):
-        batch = HydroGenerator.generate_task()
-        batch = {
-            "x": batch["x"],
-            "y": batch["y"],
-            "x_context_class": batch["x_context"],
-            "asds": (B.sign(tensor - torch.ones_like(tensor)) + 1) / 2
-            "y_context_class": torch.unsqueeze(batch["y_context"][:, :, 1], 2),
-            "x_target_class": batch["x_target"],
-            "y_target_class": torch.unsqueeze(batch["y_target"][:, :, 1], 2),
-            "x_context_reg": batch["x_context"],
-            "y_context_reg": torch.unsqueeze(batch["y_context"][:, :, 0], 2),
-            "x_target_reg": batch["x_target"],
-            "y_target_reg": torch.unsqueeze(batch["y_target"][:, :, 0], 2),
-        }
-        batches.append(batch)
-    return batches
+    def threshold_data(y, threshold):
+        y_thresholded = torch.where(y > threshold, 1, 0)
+        return y_thresholded
 
+    return {
+        "x": batch["x"],
+        "y": batch["y"],
+        "x_context_class": batch["x_context"],
+        "y_context_class": torch.unsqueeze(threshold_data(batch["y_context"][:, :, 0], threshold), 2),
+        "x_target_class": batch["x_target"],
+        "y_target_class": torch.unsqueeze(threshold_data(batch["y_target"][:, :, 0], threshold), 2),
+        "x_context_reg": batch["x_context"],
+        "y_context_reg": torch.unsqueeze(batch["y_context"][:, :, 1] - 300*B.ones(batch["y_context"][:, :, 1]), 2),
+        "x_target_reg": batch["x_target"],
+        "y_target_reg": torch.unsqueeze(batch["y_target"][:, :, 1] - 300*B.ones(batch["y_context"][:, :, 1]), 2),
+    }
 
 def compute_loss(model, batch, mode="dual"):
     """Compute the sum of the classification and regression loss functions."""
@@ -123,6 +119,7 @@ def plot_graphs(batch, epoch, n):
     Plot classification and regression graphs for different proportions 
     of classification and regression context points
     """
+    batch = split_off_classification(batch)
 
     # Set up batch to compute loss on single task
     task = {}
@@ -141,8 +138,8 @@ def plot_graphs(batch, epoch, n):
         # target inputs.
         x_target_class = batch["x_target_class"]
         x_target_reg = batch["x_target_reg"]
-        batch["x_target_class"] = B.linspace(torch.float32, *HydroGenerator.x_range, 200)
-        batch["x_target_reg"] = B.linspace(torch.float32, *HydroGenerator.x_range, 200)
+        batch["x_target_class"] = B.linspace(torch.float32, *x_range, 200)
+        batch["x_target_reg"] = B.linspace(torch.float32, *x_range, 200)
 
         class_prob, (reg_mean, reg_std) = model(batch)
         class_prob = B.sigmoid(class_prob)
@@ -212,7 +209,8 @@ def plot_graphs(batch, epoch, n):
 def evaluate_model(model, mode, epoch):
     losses = []
     i = 0.2
-    for batch in batches_test:
+    for batch in evaluation_tasks:
+        batch = split_off_classification(batch)
         losses.append(compute_loss(model, batch, mode))
         i += 0.2
     losses = B.to_numpy(losses)
@@ -221,7 +219,7 @@ def evaluate_model(model, mode, epoch):
 
     # Produce some plots.
     print("Plotting...")
-    plot_graphs(batches_test[0], epoch, n=1)
+    plot_graphs(evaluation_tasks[0], epoch, n=1)
 
     # Save checkpoint
     checkpoint = {
@@ -285,8 +283,12 @@ args = parser.parse_args()
 wd = WorkingDirectory(args.root, seed=0, override=True)
 
 # Setup data generator.
-batches_train = generate_batches(num_batches=2**8)
-batches_test = generate_batches(num_batches=4)
+gen_train = data_generator.HydroGenerator(
+    num_tasks = args.tasks_per_epoch,
+    dict_df = data,
+    channels_c = ["PRCP(mm/day)", "Q"],
+    channels_t = ["PRCP(mm/day)", "Q"],
+)
 
 # Construct model.
 mode = args.mode
@@ -310,7 +312,8 @@ for epoch in range(args.epochs):
 
     # Run training epoch.
     print("Training...")
-    for batch in batches_train:
+    for batch in gen_train.epoch():
+        batch = split_off_classification(batch)
         loss = compute_loss(model, batch, mode)
         # Perform gradient step.
         loss.backward()

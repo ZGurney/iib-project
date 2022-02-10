@@ -14,10 +14,7 @@
 - `plot_graphs()` function was modifying the batches in `evaluation_tasks` directly when we create a grid of 200 points
 - We cannot modify the dense x grid generation in plotting graphs as we need to modify the batch itself to generate predictions over that dense grid
 
+## CAMELS data generator
 
-
-
-
-- Sara Forouhi
-- Stephen Agahi-Murphy
-- call 8-9 pm
+- Need to later implement seeded version using NumPy random number generator
+- Need to solve x_range problem
