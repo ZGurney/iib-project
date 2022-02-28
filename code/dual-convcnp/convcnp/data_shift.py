@@ -4,6 +4,8 @@ import stheno
 
 import torch
 
+import numpy as np
+
 
 
 __all__ = ["GPGeneratorShiftedClassification"]
@@ -90,7 +92,9 @@ class GPGeneratorShiftedClassification:
 
         shift=0.5,
 
-        mode="random", 
+        mode="random",
+
+        change_shift=False,
 
         device=None,
 
@@ -172,9 +176,16 @@ class GPGeneratorShiftedClassification:
 
             self.state = B.create_random_state(torch.float32, seed)
 
+        self.change_shift = change_shift
+
+        if self.change_shift:
+
+            rng = np.random.default_rng(seed=seed)
+
+            self.shifts = rng.choice((0.5, 1.0), self.num_batches)
 
 
-    def generate_batch(self):
+    def generate_batch(self, i):
 
         """Generate a batch.
 
@@ -286,6 +297,15 @@ class GPGeneratorShiftedClassification:
 
         # Sample outputs, taking into account the shift.
 
+        if self.change_shift:
+
+            current_shift = self.shifts[i]
+        
+        else:
+        
+            current_shift = self.shift
+
+
         with B.on_device(self.device):
 
             noise = B.to_active_device(self.noise)
@@ -298,11 +318,11 @@ class GPGeneratorShiftedClassification:
 
                 x_context_reg,
 
-                x_context_class - self.shift,
+                x_context_class - current_shift,
 
                 x_target_reg,
 
-                x_target_class - self.shift,
+                x_target_class - current_shift,
 
                 axis=1,
 
@@ -378,11 +398,11 @@ class GPGeneratorShiftedClassification:
 
 
 
-        def lazy_gen_batch():
+        def lazy_gen_batch(i):
 
-            return self.generate_batch()
+            return self.generate_batch(i)
 
 
 
-        return (lazy_gen_batch() for _ in range(self.num_batches))
+        return (lazy_gen_batch(i) for i in range(self.num_batches))
 
