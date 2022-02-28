@@ -1,3 +1,4 @@
+import enum
 import lab.torch as B
 import torch
 import torch.nn as nn
@@ -8,7 +9,7 @@ from .encoder import SetConv1dEncoder
 from .unet import UNet
 from .util import convert_batched_data
 
-__all__ = ["DualConvCNP"]
+__all__ = ["MultiConvCNP"]
 
 
 class MultiConvCNP(nn.Module):
@@ -17,15 +18,19 @@ class MultiConvCNP(nn.Module):
         sigma: float = 0.1,
         points_per_unit: float = 32,
         small: bool = False,
-        output_structure: tuple = (1, 1),
+        num_class: int = 1,
+        num_reg: int = 1,
     ):
         super(MultiConvCNP, self).__init__()
+
+        self.num_class = num_class
+        self.num_reg = num_reg
 
         # Construct CNN:
         self.conv = UNet(
             dimensionality=1,
-            in_channels=int(2*(output_structure[0] + output_structure[1])),  # Two for each discrete and continuous output
-            out_channels=int(output_structure[0] + 2*output_structure[1]),  # One for class. prob. and two for mean and variance
+            in_channels=int(2*(self.num_class + self.num_reg)),  # Two for each discrete and continuous output
+            out_channels=int(self.num_class + 2*self.num_reg),  # One for class. prob. and two for mean and variance
             channels=(8, 16, 16, 32) if small else (8, 16, 16, 32, 32, 64),
         )
 
@@ -48,30 +53,42 @@ class MultiConvCNP(nn.Module):
 
     def forward(self, batch):
         # Ensure that inputs are of the right shape.
-        batch = [{k: convert_batched_data(v) for k, v in output.items()} for output in batch]
+        batch = batch.copy()
+        for output in batch:
+            output = {k: convert_batched_data(v) for k, v in output.items()}
 
         # Construct discretisation.
         with B.on_device(batch[0]["x_context"]):
             x_grid = self.disc(batch)[None, :, None]
 
-            # Run encoders.
-            z = [] # This needs to be converted to torch tensor, then B.concat operation not needed
-            for output in batch:
-                z.append(self.encoder(
+        # Run encoders.
+        for index, output in enumerate(batch):
+            z_output = self.encoder(
                     output["x_context"],
                     output["y_context"],
                     x_grid,
-                ))
+                )
+            if index == 0:
+                z = z_output
+            else:
+                z = B.concat(z, z_output, axis=1)
 
         # Run CNN.
-        z = B.concat(z_class, z_reg, axis=1)
         z = self.conv(z)
-        z_class = z[:, :1, :]
-        z_reg = z[:, 1:, :]
+        z_outputs = []
+        for i in range(self.num_class):
+            z_outputs.append(z[:, i:(i+1), :])
+        for i in range(self.num_reg):
+            z_outputs.append(z[:, (self.num_class+2*i):(self.num_class+2*(i+1)), :])
+        assert B.shape(z_outputs)[0] == B.shape(batch)[0], "Number of outputs do not match"
 
         # Run decoders.
-        z_class = self.decoder(x_grid, z_class, batch["x_target_class"])
-        z_reg = self.decoder(x_grid, z_reg, batch["x_target_reg"])
+        for index, output in enumerate(batch):
+            z_outputs[index] = self.decoder(
+                x_grid, 
+                z_outputs[index], 
+                output["x_target"]
+            )
 
         # Return parameters for classification and regression.
-        return z_class, (z_reg[:, :, :1], B.exp(z_reg[:, :, 1:]))
+        return z_outputs

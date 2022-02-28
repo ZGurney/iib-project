@@ -9,7 +9,9 @@ _dispatch = Dispatcher()
 
 
 def convert_batched_data(x):
-    if B.rank(x) == 1:
+    if isinstance(x, str):
+        pass
+    elif B.rank(x) == 1:
         return x[None, :, None]
     elif B.rank(x) == 2:
         raise ValueError(

@@ -19,6 +19,15 @@ class Discretisation1d:
             x_values.append(output["x_context"])
             x_values.append(output["x_target"])
         x_values = [x for x in x_values if B.length(x) > 0]
+        
+        """
+        args = []
+        for i in range(B.shape(x_context)[2]):
+            args.append(x_context[:, :, i])
+        for i in range(B.shape(x_target)[2]):
+            args.append(x_target[:, :, i])
+        args = [arg for arg in args if B.length(arg) > 0]
+        """
 
         grid_min = min([B.to_numpy(B.min(x)) for x in x_values]) - self.margin
         grid_max = max([B.to_numpy(B.max(x)) for x in x_values]) + self.margin

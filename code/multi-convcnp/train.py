@@ -55,10 +55,16 @@ parser.add_argument(
     help="Weight assigned to the classification loss.",
 )
 parser.add_argument(
-    "--output_structure",
-    type=tuple,
-    default=(1,1)
-    help="Number of discrete binary outputs and continuous outputs",
+    "--num_class",
+    type=int,
+    default=1
+    help="Number of discrete binary outputs",
+)
+parser.add_argument(
+    "--num_reg",
+    type=int,
+    default=1
+    help="Number of continuous outputs",
 )
 args = parser.parse_args()
 
@@ -66,18 +72,18 @@ args = parser.parse_args()
 wd = WorkingDirectory(args.root, seed=0, override=True)
 
 # Setup data generator.
-data_train = convcnp.DataGenerator(num_tasks=args.tasks_per_epoch)
-data_test = convcnp.DataGenerator(num_tasks=64)
+gen_train = convcnp.GPGeneratorShiftedClassification(num_tasks=args.tasks_per_epoch)
+gen_test = convcnp.GPGeneratorShiftedClassification(num_tasks=64, seed=1)
 
 # Construct model.
-model = convcnp.MultiConvCNP(small=args.small, output_structure=args.output_structure).to(device)
+model = convcnp.MultiConvCNP(small=args.small, num_class=args.num_class, num_reg=args.num_reg)
 
 # Construct optimiser.
 opt = torch.optim.Adam(params=model.parameters(), lr=args.rate)
 
 # Compute eval loss for epoch 0 (no training)
 print("Evaluating epoch 0 (before training)")
-util.evaluate_model(model, data_test, epoch=-1)
+util.evaluate_model(model, gen_test, epoch=-1)
 
 # Run training loop.
 for epoch in range(args.epochs):
@@ -86,7 +92,7 @@ for epoch in range(args.epochs):
 
     # Run training epoch.
     print("Training...")
-    for batch in data_train.epoch(device):
+    for batch in gen_train.epoch():
         loss = util.compute_loss(model, batch)
         # Perform gradient step.
         loss.backward()
@@ -95,7 +101,7 @@ for epoch in range(args.epochs):
 
     # Compute eval loss and save model.
     print("Evaluating...")
-    util.evaluate_model(model, data_test, epoch)
+    util.evaluate_model(model, gen_test.epoch(), epoch)
 
     t_stop = perf_counter()
     print(f"Epoch {epoch+1} completed in {(t_stop-t_start):,.0f} seconds.")

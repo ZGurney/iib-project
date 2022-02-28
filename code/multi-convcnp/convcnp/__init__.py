@@ -6,6 +6,7 @@ _dispatch = plum.Dispatcher()
 
 from .data import *
 from .data_seed import *
+from .data_shift import *
 from .encoder import *
 from .decoder import *
 from .discretisation import *
